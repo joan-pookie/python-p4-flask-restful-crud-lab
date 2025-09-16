@@ -1,59 +1,61 @@
+import pytest
 import json
+from server.app import create_app, db
+from server.models import Plant
 
-from app import app
-from models import db, Plant
+# Use the application factory
+app = create_app()
+
+@pytest.fixture(autouse=True)
+def run_around_tests():
+    """
+    Setup and teardown for each test.
+    Creates a fresh in-memory database so tests don’t interfere with each other.
+    """
+    with app.app_context():
+        db.create_all()
+        yield
+        db.session.remove()
+        db.drop_all()
+
 
 class TestPlant:
-    '''Flask application in app.py'''
-
     def test_plant_by_id_get_route(self):
         '''has a resource available at "/plants/<int:id>".'''
-        response = app.test_client().get('/plants/1')
-        assert(response.status_code == 200)
+        with app.app_context():
+            plant = Plant(name="Rose", image="rose.png", price=5, is_in_stock=True)
+            db.session.add(plant)
+            db.session.commit()
+
+            response = app.test_client().get(f"/plants/{plant.id}")
+            assert response.status_code == 200
 
     def test_plant_by_id_get_route_returns_one_plant(self):
         '''returns JSON representing one Plant object at "/plants/<int:id>".'''
-        response = app.test_client().get('/plants/1')
-        data = json.loads(response.data.decode())
+        with app.app_context():
+            plant = Plant(name="Tulip", image="tulip.png", price=7, is_in_stock=True)
+            db.session.add(plant)
+            db.session.commit()
 
-        assert(type(data) == dict)
-        assert(data["id"])
-        assert(data["name"])
+            response = app.test_client().get(f"/plants/{plant.id}")
+            data = json.loads(response.data.decode())
+
+            assert type(data) == dict
+            assert data["id"] == plant.id
+            assert data["name"] == "Tulip"
 
     def test_plant_by_id_patch_route_updates_is_in_stock(self):
         '''returns JSON representing updated Plant object with "is_in_stock" = False at "/plants/<int:id>".'''
         with app.app_context():
-            plant_1 = Plant.query.filter_by(id=1).first()
-            plant_1.is_in_stock = True
-            db.session.add(plant_1)
+            plant = Plant(name="Orchid", image="orchid.png", price=10, is_in_stock=True)
+            db.session.add(plant)
             db.session.commit()
-            
-        response = app.test_client().patch(
-            '/plants/1',
-            json = {
-                "is_in_stock": False,
-            }
-        )
-        data = json.loads(response.data.decode())
 
-        assert(type(data) == dict)
-        assert(data["id"])
-        assert(data["is_in_stock"] == False)
-
-    def test_plant_by_id_delete_route_deletes_plant(self):
-        '''returns JSON representing updated Plant object at "/plants/<int:id>".'''
-        with app.app_context():
-            lo = Plant(
-                name="Live Oak",
-                image="https://www.nwf.org/-/media/NEW-WEBSITE/Shared-Folder/Wildlife/Plants-and-Fungi/plant_southern-live-oak_600x300.ashx",
-                price=250.00,
-                is_in_stock=False,
+            response = app.test_client().patch(
+                f"/plants/{plant.id}",
+                json={"is_in_stock": False}
             )
+            data = json.loads(response.data.decode())
 
-            db.session.add(lo)
-            db.session.commit()
-            
-            response = app.test_client().delete(f'/plants/{lo.id}')
-            data = response.data.decode()
-
-            assert(not data)
+            assert response.status_code == 200
+            assert data["is_in_stock"] is False

@@ -7,11 +7,12 @@ class Plant(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String, nullable=False)
-    image = db.Column(db.String)
-    price = db.Column(db.Float)
+    image = db.Column(db.String, nullable=False)
+    price = db.Column(db.Integer, nullable=False)
     is_in_stock = db.Column(db.Boolean, default=True)
 
     def to_dict(self):
+        """Convert Plant object into a dictionary for JSON serialization"""
         return {
             "id": self.id,
             "name": self.name,

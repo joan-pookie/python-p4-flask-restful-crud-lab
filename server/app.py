@@ -1,52 +1,76 @@
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from flask_migrate import Migrate
-from flask_restful import Resource, Api
-from models import db, Plant   # ✅ import from models.py
+
+from server.models import db, Plant
+from server.config import Config
+
 
 def create_app():
     app = Flask(__name__)
+    app.config.from_object(Config)
 
-    # Config
-    app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///plants.db"
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-    # Init db + migrate
     db.init_app(app)
     migrate = Migrate(app, db)
+    CORS(app)
 
-    api = Api(app)
+    # --------- ROUTES ---------
 
-    # -------- Resources --------
-    class PlantById(Resource):
-        def get(self, id):
-            plant = Plant.query.get_or_404(id)
-            return jsonify(plant.to_dict())
+    # GET all plants
+    @app.route("/plants", methods=["GET"])
+    def get_plants():
+        plants = Plant.query.all()
+        return jsonify([p.to_dict() for p in plants]), 200
 
-        def patch(self, id):
-            plant = Plant.query.get_or_404(id)
-            data = request.get_json()
+    # POST a new plant
+    @app.route("/plants", methods=["POST"])
+    def create_plant():
+        data = request.get_json()
+        new_plant = Plant(
+            name=data.get("name"),
+            image=data.get("image"),
+            price=data.get("price"),
+            is_in_stock=data.get("is_in_stock", True),
+        )
+        db.session.add(new_plant)
+        db.session.commit()
+        return jsonify(new_plant.to_dict()), 201
 
-            if "is_in_stock" in data:   # ✅ lab test expects updating is_in_stock
-                plant.is_in_stock = data["is_in_stock"]
+    # GET one plant by id
+    @app.route("/plants/<int:id>", methods=["GET"])
+    def get_plant(id):
+        plant = db.session.get(Plant, id)   # ✅ updated
+        if not plant:
+            return jsonify({"error": "Plant not found"}), 404
+        return jsonify(plant.to_dict()), 200
 
-            db.session.commit()
-            return jsonify(plant.to_dict())
+    # PATCH update plant
+    @app.route("/plants/<int:id>", methods=["PATCH"])
+    def update_plant(id):
+        plant = db.session.get(Plant, id)   # ✅ updated
+        if not plant:
+            return jsonify({"error": "Plant not found"}), 404
+        data = request.get_json()
+        if "is_in_stock" in data:
+            plant.is_in_stock = data["is_in_stock"]
+        if "price" in data:
+            plant.price = data["price"]
+        db.session.commit()
+        return jsonify(plant.to_dict()), 200
 
-        def delete(self, id):
-            plant = Plant.query.get_or_404(id)
-            db.session.delete(plant)
-            db.session.commit()
-            return "", 204
-
-    # Register resources
-    api.add_resource(PlantById, "/plants/<int:id>")
-
-    @app.route("/")
-    def index():
-        return "<h1>Plant API</h1>"
+    # DELETE plant
+    @app.route("/plants/<int:id>", methods=["DELETE"])
+    def delete_plant(id):
+        plant = db.session.get(Plant, id)   # ✅ updated
+        if not plant:
+            return jsonify({"error": "Plant not found"}), 404
+        db.session.delete(plant)
+        db.session.commit()
+        return jsonify({"message": "Plant deleted"}), 200
 
     return app
 
 
-# Entrypoint
-app = create_app()
+if __name__ == "__main__":
+    app = create_app()
+    app.run(port=5555, debug=True)
